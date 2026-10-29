@@ -6,14 +6,14 @@ are experimental and will not be preserved for compatibility. Do not depend on
 this package for production use.
 
 This repository exists to test the proposed Goose `c_headers` package-build
-option ([fork PR](https://github.com/sstadick/goose/pull/1)), not to establish a
+option ([draft PR](https://github.com/aardappel/goose/pull/141)), not to establish a
 finished SIMD library. It packages the byte-comparison experiment from goostr
 as a small, standalone consumer of that option.
 
 ## Compiler requirement
 
-Use a Goose compiler containing `feat/package-c-headers` from
-[sstadick/goose](https://github.com/sstadick/goose/tree/feat/package-c-headers).
+Use a Goose compiler containing `feat/package-c-headers-upstream` from
+[sstadick/goose](https://github.com/sstadick/goose/tree/feat/package-c-headers-upstream).
 An unpatched compiler rejects `c_headers` as an unknown build setting.
 
 The package's `goosimd.build` contains:
