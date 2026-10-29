@@ -55,16 +55,23 @@ All names below are in `goosimd::`.
 
 | Operation | Behavior |
 | --- | --- |
+| `load16(bytes)` | Read the first 16 bytes, allowing unaligned input; asserts at least 16 bytes are available. |
 | `load32(bytes)` | Read the first 32 bytes, allowing unaligned input; asserts at least 32 bytes are available. |
 | `eq8(block, byte)` | Compare each byte; return `0xff` for equal lanes and zero otherwise. |
 | `mask8(block)` | Extract each byte's high bit into bit `i` of a `u32`; byte 0 maps to bit 0. |
-| `bit_and(a, b)` | Bitwise AND of two 32-byte blocks, implemented in Goose. |
+| `bit_and(a, b)` | Bitwise AND of two blocks of the same width, implemented in Goose. |
+| `bit_or(a, b)`, `bit_not(a)` | Bitwise OR and complement, implemented in Goose. |
+| `load_u16(bytes)`, `load_u32(bytes)`, `load_u64(bytes)` | Unaligned native-endian integer loads; assert that 2, 4, or 8 bytes are available. |
 | `find_byte(bytes, byte)` | Example Goose loop returning the first match index, or -1. |
 | `find_pair(bytes, a, b)` | Example Goose loop finding adjacent bytes, or -1. |
 
-`Bytes32` is temporarily four `u64` fields. The header relies on Goose's
-generated type name and layout; this is not a stable vector ABI. The exposed
-`load32_raw` adapter is unchecked; use `load32` instead.
+`Bytes16` and `Bytes32` are temporarily two and four `u64` fields. Comparison,
+mask extraction, and bitwise operations accept either width. A `Bytes16` mask
+has zeroes in bits 16–31. The header relies on Goose's generated type names
+and layouts; this is not a stable vector ABI. The exposed
+`*_raw` load adapters are unchecked; use their checked counterparts instead.
+Integer loads are for byte comparisons, not portable serialization: their
+numeric values depend on the host's byte order.
 
 ## Backends and limitations
 
@@ -96,6 +103,7 @@ python3 test/run.py \
 
 Repeat with `--cc gcc` to test GCC. `--avx2` applies to the additional emitted-C
 build; ordinary `goose build` retains its default target. Tests cover every
-byte value, vector lane and alignment, arbitrary high-bit masks, bitwise AND,
-and byte/pair searches across vector and tail boundaries. They check
+byte value, vector lane and alignment at both widths, arbitrary high-bit masks,
+bitwise operations, unaligned integer loads, and byte/pair searches across
+vector and tail boundaries. They check
 correctness, not throughput.

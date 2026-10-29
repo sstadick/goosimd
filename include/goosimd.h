@@ -1,8 +1,8 @@
 #ifndef GOOSIMD_H
 #define GOOSIMD_H
 
-// c_headers inserts this after Goose's generated types. The generated name
-// for goosimd::Bytes32 is goosimd_Bytes32_g7; this is not a stable C ABI.
+// c_headers inserts this after Goose's generated types. Their names include
+// the namespace suffix _g7; this is not a stable C ABI.
 // memcpy avoids alignment and aliasing assumptions about packed Goose values.
 #include <stdint.h>
 #include <string.h>
@@ -26,9 +26,76 @@
 #endif
 #endif
 
+GOOSIMD_INLINE goosimd_Bytes16_g7 goosimd_load16(sl_u8 s) {
+    goosimd_Bytes16_g7 r;
+    memcpy(&r, s.data, 16);
+    return r;
+}
+
+GOOSIMD_INLINE goosimd_Bytes16_g7 goosimd_eq8_16(goosimd_Bytes16_g7 v, uint8_t byte) {
+    goosimd_Bytes16_g7 r;
+#if defined(GOOSIMD_AVX2) || defined(GOOSIMD_SSE2)
+    __m128i x;
+    memcpy(&x, &v, 16);
+    x = _mm_cmpeq_epi8(x, _mm_set1_epi8((char)byte));
+    memcpy(&r, &x, 16);
+#elif defined(GOOSIMD_NEON)
+    uint8x16_t x;
+    memcpy(&x, &v, 16);
+    x = vceqq_u8(x, vdupq_n_u8(byte));
+    memcpy(&r, &x, 16);
+#else
+    uint8_t x[16];
+    memcpy(x, &v, 16);
+    for (int i = 0; i < 16; i++) x[i] = x[i] == byte ? 255 : 0;
+    memcpy(&r, x, 16);
+#endif
+    return r;
+}
+
+// Bits 16..31 are zero; bit i is byte i's high bit.
+GOOSIMD_INLINE uint32_t goosimd_mask8_16(goosimd_Bytes16_g7 v) {
+#if defined(GOOSIMD_AVX2) || defined(GOOSIMD_SSE2)
+    __m128i x;
+    memcpy(&x, &v, 16);
+    return (uint32_t)_mm_movemask_epi8(x);
+#elif defined(GOOSIMD_NEON)
+    uint8x16_t x;
+    const uint8_t weights[16] = {1,2,4,8,16,32,64,128,1,2,4,8,16,32,64,128};
+    memcpy(&x, &v, 16);
+    x = vandq_u8(vreinterpretq_u8_s8(vshrq_n_s8(vreinterpretq_s8_u8(x), 7)), vld1q_u8(weights));
+    return (uint32_t)vaddv_u8(vget_low_u8(x))
+        | (uint32_t)vaddv_u8(vget_high_u8(x)) << 8;
+#else
+    uint8_t x[16];
+    uint32_t r = 0;
+    memcpy(x, &v, 16);
+    for (int i = 0; i < 16; i++) r |= (uint32_t)(x[i] >> 7) << i;
+    return r;
+#endif
+}
+
 GOOSIMD_INLINE goosimd_Bytes32_g7 goosimd_load32(sl_u8 s) {
     goosimd_Bytes32_g7 r;
     memcpy(&r, s.data, 32);
+    return r;
+}
+
+GOOSIMD_INLINE uint16_t goosimd_load_u16(sl_u8 s) {
+    uint16_t r;
+    memcpy(&r, s.data, sizeof r);
+    return r;
+}
+
+GOOSIMD_INLINE uint32_t goosimd_load_u32(sl_u8 s) {
+    uint32_t r;
+    memcpy(&r, s.data, sizeof r);
+    return r;
+}
+
+GOOSIMD_INLINE uint64_t goosimd_load_u64(sl_u8 s) {
+    uint64_t r;
+    memcpy(&r, s.data, sizeof r);
     return r;
 }
 
