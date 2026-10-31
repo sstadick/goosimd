@@ -108,3 +108,12 @@ positions; unaligned integer loads; and searches across vector/tail boundaries.
 
 `experiments/api-designs/` retains the A/B/C comparison and measurements
 that led to this generic interface. It is not part of the public API.
+
+## License and attribution
+
+MIT; see [LICENSE](LICENSE). The search examples follow the packed-pair
+approach used by [memchr](https://github.com/BurntSushi/memchr), by Andrew
+Gallant and contributors. For any memchr-derived material, we select its
+[Unlicense option](https://docs.rs/crate/memchr/2.8.3/source/UNLICENSE).
+The bstr-specific port and its notices belong to
+[goostr](https://github.com/sstadick/goostr), not this package.
