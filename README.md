@@ -1,38 +1,124 @@
 # goosimd
 
-**[API reference](API.md)** — signatures, contracts, tested examples, and source links.
+Compare 16 or 32 bytes at a time in [Goose](https://github.com/aardappel/goose),
+combine the results as masks, and find matching positions.
 
-**Placeholder only. This implementation is experimental and may be entirely
-replaced.** Types, layout, and backend choices are not a stable API or ABI.
-The generic byte-vector interface replaces the original `Bytes16`/`Bytes32`
-experiment; there is no compatibility layer for that API.
+**[API reference and examples](API.md)** · [Releases](https://github.com/sstadick/goosimd/releases)
 
-Goose owns the algorithms. A package-supplied C header provides inline load,
-comparison, and mask primitives. No consumer `--include`, separate SIMD
-object, or LTO is needed. Requires a Goose compiler with `c_headers`
-([merged PR](https://github.com/aardappel/goose/pull/141)).
+**This is an experimental placeholder and will be replaced with a different
+implementation.** Do not rely on stable types, layout, or API compatibility.
 
-## Releases
+## Get started
 
-Current version: [v0.1.0](https://github.com/sstadick/goosimd/releases/tag/v0.1.0).
-Versions are Git tags (`vMAJOR.MINOR.PATCH`). Pushing a version tag runs CI
-and publishes a GitHub source release only after tests and the documentation
-check pass. Future releases also attach `API.md` with source links pinned to
-the release commit. CI runs on branch pushes and pull requests as well.
-The examples below track `main`.
+Save this as `main.goose`. Goose downloads the package automatically:
 
-## API documentation
+```goose
+import goosimd from "github.com/sstadick/goosimd@main";
 
-[API.md](API.md) is generated from source comments with
-[goosdoc v0.2.0](https://github.com/sstadick/goosdoc/releases/tag/v0.2.0).
-Edit the comments, not the generated file. `api.txt` selects the supported
-API, omitting raw adapters and implementation helpers. Every selected
-declaration needs a comment and an executable example.
-
-With Goose on `PATH`, run from this checkout:
+fn main() {
+    let bytes = "abcdefghijklmnopqrstuvwxyz012345";
+    let v = goosimd::load<goosimd::U8x32>(bytes);
+    let matches = v.eq('a').bit_or(v.eq('z'));
+    print(matches.first());    // 0
+    print(matches.last());     // 25
+    print(matches.to_bits());  // 33554433: bits 0 and 25
+}
+```
 
 ```sh
-git clone --branch v0.2.0 --depth 1 https://github.com/sstadick/goosdoc.git ../goosdoc
+goose run main.goose
+goose build main.goose -O2 -o demo
+```
+
+Use a Goose compiler with package `c_headers` support. No `--include` flag
+or separate library build is needed. The example follows `main`; use a
+commit instead for a reproducible dependency.
+
+## Compare and combine
+
+`U8x16` and `U8x32` are shorthand for `Vec<u8[16]>` and `Vec<u8[32]>`.
+Choose the width in your code. Only these byte-vector types are supported.
+Each byte position is called a *lane*.
+
+Inside `main()`, with the import above:
+
+```goose
+let v = goosimd::load<goosimd::U8x16>("red,green;blue___");
+let separators = v.eq(',').bit_or(v.eq(';'));
+assert(separators.first() == 3);
+assert(separators.last() == 9);
+assert(separators.to_bits() == 520); // Bits 3 and 9.
+assert(separators.bit_not().first() == 0);
+assert(v.eq('?').first() == -1);
+```
+
+| Operation | Result |
+| --- | --- |
+| `load<V>(bytes)` | Read the first 16 or 32 bytes; input must be at least that long. Alignment is not required. |
+| `v.eq(byte)` | A mask marking lanes equal to the byte. |
+| `m.bit_and(n)` | Lanes matched by both masks. |
+| `m.bit_or(n)` | Lanes matched by either mask. |
+| `m.bit_not()` | All lanes not matched by the mask. |
+| `m.to_bits()` | A `u32` with one bit per matching lane; lane 0 is bit 0. |
+| `m.first()`, `m.last()` | First or last matching lane, or -1 for no match. |
+
+Combine masks of the same width. Create them through comparisons, not by
+setting their fields: masks must contain only 0/255 lanes. Bits above the
+vector width are zero in `to_bits()`.
+
+For short byte comparisons, `load_u16`, `load_u32`, and `load_u64` read
+unaligned integers with length checks. These use **native byte order**, so
+they are not portable serialization functions.
+
+## Search a whole slice
+
+The package also provides simple searches that handle short inputs and tails:
+
+```goose
+assert(goosimd::find_byte("hello", 'l') == 2);
+assert(goosimd::find_pair("hello", 'l', 'o') == 3);
+assert(goosimd::find_byte("hello", '?') == -1);
+```
+
+For substring search, splitting, and other byte-string operations, use
+[goostr](https://github.com/sstadick/goostr).
+
+## Choose a compiler and target
+
+Vector width and CPU instruction set are separate choices: a 32-byte vector
+does not require an AVX2 CPU.
+
+| Build | Behavior |
+| --- | --- |
+| `goose run` with TinyCC | Scalar fallback; no SIMD acceleration. |
+| Native GCC | Uses the build target, normally SSE2 on x86-64. |
+| Native Clang on x86 | Uses the build target in ordinary functions; Goose `simd fn` enables runtime selection. |
+
+For runtime selection in your own algorithms, put the whole scan loop in
+a `simd fn`. The included `find_byte` and `find_pair` use this approach.
+Build with `goose build main.goose --cc clang -O2 -o demo` to use it.
+GCC does not provide runtime selection for Goose's `simd fn`.
+
+To require AVX2 at compile time, compile emitted C with `-mavx2`; the resulting
+executable requires an AVX2 CPU. Clang's runtime AVX2 selection also checks
+FMA, BMI1/2, LZCNT, POPCNT, and OS support. Tested on Linux x86-64;
+ARM and Windows are unverified.
+
+## Contributing
+
+Tests require Python 3, Goose, and GCC or Clang:
+
+```sh
+python3 test/run.py --goose /path/to/goose --cc clang
+# On an AVX2-capable machine:
+python3 test/run.py --goose /path/to/goose --cc gcc --avx2
+```
+
+Edit API documentation in the source comments, not `API.md`. With
+[goosdoc v0.2.0](https://github.com/sstadick/goosdoc/releases/tag/v0.2.0)
+checked out at `../goosdoc`, run:
+
+```sh
 scripts/docs.sh
 scripts/docs.sh --check
 scripts/doctest.sh
@@ -40,132 +126,14 @@ scripts/doctest.sh --cc gcc
 scripts/doctest.sh --cc clang
 ```
 
-Skip cloning if goosdoc is already beside this repository. For another
-location, set `GOOSDOC=/path/to/goosdoc/main.goose`. CI pins the generator's
-commit and rejects missing comments/examples, failing examples or a stale
-reference. Checked-in source links are relative; release artifacts use
-immutable GitHub permalinks. Examples run under TinyCC, GCC and Clang before
-a release can publish; running them requires Python 3 as well as Goose.
-
-Write examples in `goose` fences inside the declaration's `//` comments.
-Each is a separate `fn main()` body, with imports supplied by
-[`test/doc_preamble.goose`](test/doc_preamble.goose). Use `assert` for expected
-results. The generated API examples assume those imports; they test the local
-checkout, including its C header. See goosdoc's
+Set `GOOSDOC=/path/to/goosdoc/main.goose` for another location. Every API
+declaration needs an executable example; see the
 [example conventions](https://github.com/sstadick/goosdoc#executable-examples).
+CI checks the reference and runs examples and tests before publishing releases.
 
-## Use it in a Goose project
+## License
 
-Save this as `main.goose` in your project. Goose fetches the package from
-GitHub; no sibling checkout or consumer `--include` flag is needed.
-
-```goose
-import goosimd from "github.com/sstadick/goosimd@main";
-
-type Bytes = goosimd::Vec<u8[32]>;
-
-fn main() {
-    let bytes = "abcdefghijklmnopqrstuvwxyz012345";
-    let v = goosimd::load<Bytes>(bytes);
-    let matches = v.eq('a').bit_or(v.eq('z'));
-    print(matches.first());    // 0
-    print(matches.last());     // 25
-    print(matches.to_bits());  // bits 0 and 25
-}
-```
-
-Run it with `goose run main.goose`, or build an executable with
-`goose build main.goose -O2 -o demo`. These commands require a Goose version
-with `c_headers` support. `@main` follows the development branch; use a
-commit instead for a reproducible dependency.
-
-## Byte vectors and masks
-
-`U8x16` and `U8x32` are aliases for `Vec<u8[16]>` and `Vec<u8[32]>`.
-Width describes the value, not the instruction set: a 32-byte vector can
-use two SSE2 registers. Only these byte-vector instantiations are supported;
-other element types and widths fail overload resolution.
-
-| Operation | Contract |
-| --- | --- |
-| `load<V>(bytes)` | Read exactly the first vector-width bytes, allowing unaligned input; assert sufficient length. |
-| `v.eq(byte)` | Produce `Mask<Lanes>` with `0xff` for equal lanes and zero otherwise. |
-| `m.bit_and(n)`, `m.bit_or(n)`, `m.bit_not()` | Combine/invert masks of the same width. |
-| `m.to_bits()` | Return a `u32`; lane 0 maps to bit 0. Bits above the mask width are zero. |
-| `m.first()`, `m.last()` | Return the first/last matching lane, or -1 for an empty mask. |
-| `load_u16/32/64(bytes)` | Checked, unaligned native-endian integer loads for byte comparisons. |
-
-Masks are comparison results, **not arbitrary byte vectors**. Do not construct
-or mutate masks with values other than 0/255. `to_bits()` is not a general
-high-bit extraction operation. Use the checked loads, not the exposed raw
-extern adapters. Integer loads are not portable serialization primitives.
-
-## Compile-time and runtime selection
-
-Ordinary `fn` consumers use the C compiler's build target. Compile emitted
-C with `-mavx2` for an AVX2-only executable; without it, x86-64 uses SSE2.
-Selecting `U8x16` versus `U8x32` is a compile-time type choice independent
-of that target. The generic façade introduces no runtime type dispatch.
-
-To select at runtime, put the **whole scan loop** in a Goose `simd fn`,
-not a wrapper around each primitive. The included `find_byte` and `find_pair`
-functions demonstrate this: Clang/x86 compiles target-specific versions and
-dispatches outside the loop. The same `load`, `eq`, and mask methods inline
-into each version; the header does not use a build-wide AVX2 choice for Clang.
-
-```goose
-// This calls the runtime-selected example loop.
-let at = goosimd::find_pair("hello", 'l', 'o');  // 3
-```
-
-- Clang/x86 runtime AVX2 requires Goose's full target level: AVX2, FMA,
-  BMI1/2, LZCNT, and POPCNT, plus OS register-state support. It is not an
-  AVX2-only CPU check. `-DGS_SIMD=0` disables multiversioning in emitted C;
-  `-DGS_SIMD=1` caps it at AVX2.
-- GCC ignores Goose's `simd fn` multiversioning and uses the build target.
-  Its baseline backend uses 16-byte chunks to avoid aggregate-copy penalties.
-- TinyCC uses scalar adapters, not SIMD acceleration.
-- Clang/GCC vector operations also support native targets such as AArch64.
-  This revision is verified on Linux x86-64; ARM and Windows are unverified.
-- `-DGOOSIMD_SCALAR` forces scalar adapters. Package build settings do not
-  propagate architecture flags to the consumer's C compilation.
-
-The example searches are not tuned bstr replacements. goostr implements its
-own algorithms using these primitives. Generic functions taking a loader
-can use a compile-time block, for example `{ s => goosimd::load<Bytes>(s) }`;
-this avoids Goose's restriction on passing `load<Bytes>` as a function value.
-
-## Representation
-
-The header relies on Goose's generated struct names, such as
-`goosimd_Vec_g7_a32_u8`, and the inline array layout. This is a compiler
-integration detail, not a stable C type contract. Loads and vector conversions
-use `memcpy`, without imposing alignment or aliasing requirements on callers.
-The header contains primitives only, not search loops.
-
-## Tests
-
-```sh
-python3 test/run.py --goose /path/to/goose --cc clang
-# On an AVX2-capable machine:
-python3 test/run.py --goose /path/to/goose --cc clang --avx2
-python3 test/run.py --goose /path/to/goose --cc gcc --avx2
-```
-
-The runner uses ordinary `goose run` and `goose build` with a fresh
-`GOOSE_HOME`, plus emitted C compiled natively, with scalar adapters, and
-optionally with AVX2. It never passes `--include`. Tests cover every byte
-value, vector lane and alignment; mask composition, inversion, first/last
-positions; unaligned integer loads; and searches across vector/tail boundaries.
-
-`experiments/api-designs/` retains the A/B/C comparison and measurements
-that led to this generic interface. It is not part of the public API.
-
-## License and attribution
-
-MIT; see [LICENSE](LICENSE). The search examples follow the packed-pair
-approach used by [memchr](https://github.com/BurntSushi/memchr), by Andrew
-Gallant and contributors. For any memchr-derived material, we select its
+MIT; see [LICENSE](LICENSE). The search examples draw on
+[memchr](https://github.com/BurntSushi/memchr) by Andrew Gallant and contributors;
+memchr-derived material uses its
 [Unlicense option](https://docs.rs/crate/memchr/2.8.3/source/UNLICENSE).
-The bstr-specific port and its notices belong to
-[goostr](https://github.com/sstadick/goostr), not this package.
