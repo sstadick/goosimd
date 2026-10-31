@@ -1,93 +1,153 @@
 #ifndef GOOSIMD_H
 #define GOOSIMD_H
 
-// c_headers inserts this after Goose's generated types. The generated name
-// for goosimd::Bytes32 is goosimd_Bytes32_g7; this is not a stable C ABI.
-// memcpy avoids alignment and aliasing assumptions about packed Goose values.
+// c_headers places this after Goose's generated types. These names/layouts
+// are compiler-specific, not a stable C ABI. memcpy permits packed values.
 #include <stdint.h>
 #include <string.h>
 
-#if (defined(__clang__) || defined(__GNUC__)) && !defined(__TINYC__)
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(__TINYC__) && !defined(GOOSIMD_SCALAR)
 #define GOOSIMD_INLINE static inline __attribute__((always_inline))
+#define GOOSIMD_VECTOR_BACKEND 1
+typedef uint8_t goosimd_v16 __attribute__((vector_size(16)));
+typedef uint8_t goosimd_v32 __attribute__((vector_size(32)));
+// GCC baseline needs matching 16-byte loads and operations to eliminate
+// copies of array-backed vectors. Clang lowers each simd fn target itself.
+#if !defined(__clang__) && !defined(__AVX2__)
+#define GOOSIMD_WIDTH(N) 16
+#else
+#define GOOSIMD_WIDTH(N) N
+#endif
+#define GOOSIMD_TYPE_(N) goosimd_v##N
+#define GOOSIMD_TYPE(N) GOOSIMD_TYPE_(N)
+// GCC's scalar broadcast avoids stack temporaries. Clang's vector form
+// produces better code for short mask combinations.
+#if defined(__clang__)
+#define GOOSIMD_BROADCAST(N, byte) \
+    GOOSIMD_TYPE(GOOSIMD_WIDTH(N)) broadcast; \
+    for (int i = 0; i < GOOSIMD_WIDTH(N); ++i) broadcast[i] = byte
+#else
+#define GOOSIMD_BROADCAST(N, byte) uint8_t broadcast = byte
+#endif
+#define GOOSIMD_LOAD(N, out, input) do { \
+    for (int offset = 0; offset < N; offset += GOOSIMD_WIDTH(N)) \
+        memcpy((uint8_t *)&(out) + offset, (input) + offset, GOOSIMD_WIDTH(N)); \
+} while (0)
+#define GOOSIMD_EQ(N, out, input, byte) do { \
+    GOOSIMD_BROADCAST(N, byte); \
+    for (int offset = 0; offset < N; offset += GOOSIMD_WIDTH(N)) { \
+        GOOSIMD_TYPE(GOOSIMD_WIDTH(N)) x; \
+        memcpy(&x, (const uint8_t *)&(input) + offset, sizeof x); \
+        x = (GOOSIMD_TYPE(GOOSIMD_WIDTH(N)))(x == broadcast); \
+        memcpy((uint8_t *)&(out) + offset, &x, sizeof x); \
+    } \
+} while (0)
+#define GOOSIMD_BINARY(N, out, a, b, op) do { \
+    for (int offset = 0; offset < N; offset += GOOSIMD_WIDTH(N)) { \
+        GOOSIMD_TYPE(GOOSIMD_WIDTH(N)) x, y; \
+        memcpy(&x, (const uint8_t *)&(a) + offset, sizeof x); \
+        memcpy(&y, (const uint8_t *)&(b) + offset, sizeof y); \
+        x = x op y; memcpy((uint8_t *)&(out) + offset, &x, sizeof x); \
+    } \
+} while (0)
+#define GOOSIMD_NOT(N, out, input) do { \
+    for (int offset = 0; offset < N; offset += GOOSIMD_WIDTH(N)) { \
+        GOOSIMD_TYPE(GOOSIMD_WIDTH(N)) x; \
+        memcpy(&x, (const uint8_t *)&(input) + offset, sizeof x); \
+        x = ~x; memcpy((uint8_t *)&(out) + offset, &x, sizeof x); \
+    } \
+} while (0)
 #else
 #define GOOSIMD_INLINE static inline
+#define GOOSIMD_VECTOR_BACKEND 0
+#define GOOSIMD_LOAD(N, out, input) memcpy(&(out), input, N)
+#define GOOSIMD_EQ(N, out, input, byte) do { \
+    uint8_t x[N]; memcpy(x, &(input), N); \
+    for (int i = 0; i < N; ++i) x[i] = x[i] == byte ? 255 : 0; \
+    memcpy(&(out), x, N); \
+} while (0)
+#define GOOSIMD_BINARY(N, out, a, b, op) do { \
+    uint8_t x[N], y[N]; memcpy(x, &(a), N); memcpy(y, &(b), N); \
+    for (int i = 0; i < N; ++i) x[i] = x[i] op y[i]; \
+    memcpy(&(out), x, N); \
+} while (0)
+#define GOOSIMD_NOT(N, out, input) do { \
+    uint8_t x[N]; memcpy(x, &(input), N); \
+    for (int i = 0; i < N; ++i) x[i] = (uint8_t)~x[i]; \
+    memcpy(&(out), x, N); \
+} while (0)
 #endif
 
-#if !defined(__TINYC__) && !defined(GOOSIMD_SCALAR)
-#if defined(__AVX2__)
+#if defined(__clang__) && GOOSIMD_VECTOR_BACKEND
+typedef _Bool goosimd_bool16 __attribute__((ext_vector_type(16)));
+typedef _Bool goosimd_bool32 __attribute__((ext_vector_type(32)));
+// Conversion to packed booleans is for comparison masks, not arbitrary bytes.
+#define GOOSIMD_BITS(N, m, r) do { \
+    goosimd_v##N x; memcpy(&x, &(m), N); \
+    goosimd_bool##N b = __builtin_convertvector(x, goosimd_bool##N); \
+    memcpy(&(r), &b, sizeof b); \
+} while (0)
+#elif GOOSIMD_VECTOR_BACKEND && (defined(__SSE2__) || defined(__aarch64__))
+#if defined(__SSE2__)
 #include <immintrin.h>
-#define GOOSIMD_AVX2
-#elif defined(__aarch64__)
+GOOSIMD_INLINE uint32_t goosimd_extract16(const void *p) {
+    __m128i x; memcpy(&x, p, 16); return (uint32_t)_mm_movemask_epi8(x);
+}
+#else
 #include <arm_neon.h>
-#define GOOSIMD_NEON
-#elif defined(__SSE2__)
-#include <emmintrin.h>
-#define GOOSIMD_SSE2
-#endif
-#endif
-
-GOOSIMD_INLINE goosimd_Bytes32_g7 goosimd_load32(sl_u8 s) {
-    goosimd_Bytes32_g7 r;
-    memcpy(&r, s.data, 32);
-    return r;
-}
-
-GOOSIMD_INLINE goosimd_Bytes32_g7 goosimd_eq8(goosimd_Bytes32_g7 v, uint8_t byte) {
-    goosimd_Bytes32_g7 r;
-#if defined(GOOSIMD_AVX2)
-    __m256i x;
-    memcpy(&x, &v, 32);
-    x = _mm256_cmpeq_epi8(x, _mm256_set1_epi8((char)byte));
-    memcpy(&r, &x, 32);
-#elif defined(GOOSIMD_NEON)
-    uint8x16_t x[2];
-    memcpy(x, &v, 32);
-    x[0] = vceqq_u8(x[0], vdupq_n_u8(byte));
-    x[1] = vceqq_u8(x[1], vdupq_n_u8(byte));
-    memcpy(&r, x, 32);
-#elif defined(GOOSIMD_SSE2)
-    __m128i x[2];
-    memcpy(x, &v, 32);
-    x[0] = _mm_cmpeq_epi8(x[0], _mm_set1_epi8((char)byte));
-    x[1] = _mm_cmpeq_epi8(x[1], _mm_set1_epi8((char)byte));
-    memcpy(&r, x, 32);
-#else
-    uint8_t x[32];
-    memcpy(x, &v, 32);
-    for (int i = 0; i < 32; i++) x[i] = x[i] == byte ? 255 : 0;
-    memcpy(&r, x, 32);
-#endif
-    return r;
-}
-
-// Bit i is byte i's high bit, including bit 31; accepts arbitrary byte values.
-GOOSIMD_INLINE uint32_t goosimd_mask8(goosimd_Bytes32_g7 v) {
-#if defined(GOOSIMD_AVX2)
-    __m256i x;
-    memcpy(&x, &v, 32);
-    return (uint32_t)_mm256_movemask_epi8(x);
-#elif defined(GOOSIMD_NEON)
-    uint8x16_t x[2];
+GOOSIMD_INLINE uint32_t goosimd_extract16(const void *p) {
     const uint8_t weights[16] = {1,2,4,8,16,32,64,128,1,2,4,8,16,32,64,128};
-    const uint8x16_t w = vld1q_u8(weights);
-    memcpy(x, &v, 32);
-    x[0] = vandq_u8(vreinterpretq_u8_s8(vshrq_n_s8(vreinterpretq_s8_u8(x[0]), 7)), w);
-    x[1] = vandq_u8(vreinterpretq_u8_s8(vshrq_n_s8(vreinterpretq_s8_u8(x[1]), 7)), w);
-    return (uint32_t)vaddv_u8(vget_low_u8(x[0]))
-        | (uint32_t)vaddv_u8(vget_high_u8(x[0])) << 8
-        | (uint32_t)vaddv_u8(vget_low_u8(x[1])) << 16
-        | (uint32_t)vaddv_u8(vget_high_u8(x[1])) << 24;
-#elif defined(GOOSIMD_SSE2)
-    __m128i x[2];
-    memcpy(x, &v, 32);
-    return (uint32_t)_mm_movemask_epi8(x[0]) | (uint32_t)_mm_movemask_epi8(x[1]) << 16;
+    uint8x16_t x; memcpy(&x, p, 16);
+    x = vandq_u8(x, vld1q_u8(weights));
+    return (uint32_t)vaddv_u8(vget_low_u8(x)) | (uint32_t)vaddv_u8(vget_high_u8(x)) << 8;
+}
+#endif
+GOOSIMD_INLINE uint32_t goosimd_extract32(const void *p) {
+#if defined(__AVX2__)
+    __m256i x; memcpy(&x, p, 32); return (uint32_t)_mm256_movemask_epi8(x);
 #else
-    uint8_t x[32];
-    uint32_t r = 0;
-    memcpy(x, &v, 32);
-    for (int i = 0; i < 32; i++) r |= (uint32_t)(x[i] >> 7) << i;
-    return r;
+    return goosimd_extract16(p) | (goosimd_extract16((const uint8_t *)p + 16) << 16);
 #endif
 }
+#define GOOSIMD_BITS(N, m, r) do { r = goosimd_extract##N(&(m)); } while (0)
+#else
+#define GOOSIMD_BITS(N, m, r) do { \
+    uint8_t x[N]; memcpy(x, &(m), N); \
+    for (int i = 0; i < N; ++i) r |= (uint32_t)(x[i] >> 7) << i; \
+} while (0)
+#endif
 
+#define GOOSIMD_ADAPTERS(N, V, M) \
+GOOSIMD_INLINE V goosimd_load##N(sl_u8 s) { V v; GOOSIMD_LOAD(N, v, s.data); return v; } \
+GOOSIMD_INLINE M goosimd_eq##N(V v, uint8_t byte) { M m; GOOSIMD_EQ(N, m, v, byte); return m; } \
+GOOSIMD_INLINE M goosimd_and##N(M a, M b) { M m; GOOSIMD_BINARY(N, m, a, b, &); return m; } \
+GOOSIMD_INLINE M goosimd_or##N(M a, M b) { M m; GOOSIMD_BINARY(N, m, a, b, |); return m; } \
+GOOSIMD_INLINE M goosimd_not##N(M a) { M m; GOOSIMD_NOT(N, m, a); return m; } \
+GOOSIMD_INLINE uint32_t goosimd_bits##N(M m) { uint32_t r = 0; GOOSIMD_BITS(N, m, r); return r; }
+
+GOOSIMD_ADAPTERS(16, goosimd_Vec_g7_a16_u8, goosimd_Mask_g7_a16_u8)
+GOOSIMD_ADAPTERS(32, goosimd_Vec_g7_a32_u8, goosimd_Mask_g7_a32_u8)
+
+GOOSIMD_INLINE uint16_t goosimd_load_u16(sl_u8 s) {
+    uint16_t r; memcpy(&r, s.data, sizeof r); return r;
+}
+GOOSIMD_INLINE uint32_t goosimd_load_u32(sl_u8 s) {
+    uint32_t r; memcpy(&r, s.data, sizeof r); return r;
+}
+GOOSIMD_INLINE uint64_t goosimd_load_u64(sl_u8 s) {
+    uint64_t r; memcpy(&r, s.data, sizeof r); return r;
+}
+
+#undef GOOSIMD_ADAPTERS
+#undef GOOSIMD_BITS
+#undef GOOSIMD_NOT
+#undef GOOSIMD_BINARY
+#undef GOOSIMD_EQ
+#undef GOOSIMD_LOAD
+#undef GOOSIMD_BROADCAST
+#undef GOOSIMD_TYPE
+#undef GOOSIMD_TYPE_
+#undef GOOSIMD_WIDTH
+#undef GOOSIMD_VECTOR_BACKEND
+#undef GOOSIMD_INLINE
 #endif

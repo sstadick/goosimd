@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the placeholder package through c_headers, never --include."""
+"""Check the generic byte-vector package through c_headers, never --include."""
 import argparse
 import os
 from pathlib import Path
@@ -43,7 +43,8 @@ def main():
 
         cfile = out / "check.c"
         run([goose, "--standalone", "-o", cfile, source])
-        variants = [("native", []), ("scalar", ["-DGOOSIMD_SCALAR"])]
+        variants = [("native", []), ("baseline", ["-DGS_SIMD=0"]),
+                    ("scalar", ["-DGOOSIMD_SCALAR"])]
         if args.avx2:
             variants.append(("avx2", ["-mavx2"]))
         libs = [] if os.name == "nt" else ["-lm", "-pthread"]
