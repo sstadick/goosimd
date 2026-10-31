@@ -1,6 +1,6 @@
 # goosimd
 
-**[API reference](API.md)** — vector and mask signatures, contracts, and source links.
+**[API reference](API.md)** — signatures, contracts, tested examples, and source links.
 
 **Placeholder only. This implementation is experimental and may be entirely
 replaced.** Types, layout, and backend choices are not a stable API or ABI.
@@ -24,22 +24,35 @@ The examples below track `main`.
 ## API documentation
 
 [API.md](API.md) is generated from source comments with
-[goosdoc v0.1.0](https://github.com/sstadick/goosdoc/releases/tag/v0.1.0).
+[goosdoc v0.2.0](https://github.com/sstadick/goosdoc/releases/tag/v0.2.0).
 Edit the comments, not the generated file. `api.txt` selects the supported
-API, omitting raw adapters and implementation helpers.
+API, omitting raw adapters and implementation helpers. Every selected
+declaration needs a comment and an executable example.
 
 With Goose on `PATH`, run from this checkout:
 
 ```sh
-git clone --branch v0.1.0 --depth 1 https://github.com/sstadick/goosdoc.git ../goosdoc
+git clone --branch v0.2.0 --depth 1 https://github.com/sstadick/goosdoc.git ../goosdoc
 scripts/docs.sh
 scripts/docs.sh --check
+scripts/doctest.sh
+scripts/doctest.sh --cc gcc
+scripts/doctest.sh --cc clang
 ```
 
 Skip cloning if goosdoc is already beside this repository. For another
 location, set `GOOSDOC=/path/to/goosdoc/main.goose`. CI pins the generator's
-commit and rejects missing comments or a stale reference. Checked-in source
-links are relative; release artifacts use immutable GitHub permalinks.
+commit and rejects missing comments/examples, failing examples or a stale
+reference. Checked-in source links are relative; release artifacts use
+immutable GitHub permalinks. Examples run under TinyCC, GCC and Clang before
+a release can publish; running them requires Python 3 as well as Goose.
+
+Write examples in `goose` fences inside the declaration's `//` comments.
+Each is a separate `fn main()` body, with imports supplied by
+[`test/doc_preamble.goose`](test/doc_preamble.goose). Use `assert` for expected
+results. The generated API examples assume those imports; they test the local
+checkout, including its C header. See goosdoc's
+[example conventions](https://github.com/sstadick/goosdoc#executable-examples).
 
 ## Use it in a Goose project
 

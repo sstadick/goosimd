@@ -24,7 +24,7 @@
 
 ## `goosimd::Vec`
 
-[source](goosimd.goose#L7-L7)
+[source](goosimd.goose#L12-L12)
 
 ```goose
 struct Vec<Lanes> { lanes: Lanes }
@@ -33,11 +33,16 @@ struct Vec<Lanes> { lanes: Lanes }
 A byte vector. Supported lane types are u8[16] and u8[32]. Width is a
 compile-time type choice, not an instruction-set requirement; use `load<V>`.
 
+```goose
+let v = goosimd::load<goosimd::Vec<u8[16]>>("abcdefghijklmnop");
+assert(v.eq('p').first() == 15);
+```
+
 <a id="api-2"></a>
 
 ## `goosimd::Mask`
 
-[source](goosimd.goose#L9-L9)
+[source](goosimd.goose#L19-L19)
 
 ```goose
 struct Mask<Lanes> { lanes: Lanes }
@@ -45,11 +50,16 @@ struct Mask<Lanes> { lanes: Lanes }
 
 Comparison masks contain only 0/255 lanes; do not construct arbitrary masks.
 
+```goose
+let mask = goosimd::load<goosimd::U8x16>("abcdefghijklmnop").eq('b');
+assert(mask.to_bits() == 2);
+```
+
 <a id="api-3"></a>
 
 ## `goosimd::U8x16`
 
-[source](goosimd.goose#L11-L11)
+[source](goosimd.goose#L26-L26)
 
 ```goose
 type U8x16 = Vec<u8[16]>;
@@ -57,11 +67,16 @@ type U8x16 = Vec<u8[16]>;
 
 A 16-byte vector, equivalent to `Vec<u8[16]>`.
 
+```goose
+let v = goosimd::load<goosimd::U8x16>("abcdefghijklmnop");
+assert(v.eq('a').first() == 0);
+```
+
 <a id="api-4"></a>
 
 ## `goosimd::U8x32`
 
-[source](goosimd.goose#L13-L13)
+[source](goosimd.goose#L33-L33)
 
 ```goose
 type U8x32 = Vec<u8[32]>;
@@ -69,11 +84,16 @@ type U8x32 = Vec<u8[32]>;
 
 A 32-byte vector, equivalent to `Vec<u8[32]>`; may use two 16-byte registers.
 
+```goose
+let v = goosimd::load<goosimd::U8x32>("abcdefghijklmnopqrstuvwxyz012345");
+assert(v.eq('5').last() == 31);
+```
+
 <a id="api-5"></a>
 
 ## `goosimd::load`
 
-[source](goosimd.goose#L40-L40)
+[source](goosimd.goose#L66-L66)
 
 ```goose
 inline fn load<V>(s: const u8[:]) -> V
@@ -82,11 +102,17 @@ inline fn load<V>(s: const u8[:]) -> V
 Read the first vector-width bytes without requiring alignment. V must be
 U8x16 or U8x32. Asserts that s contains at least that many bytes.
 
+```goose
+let bytes = "_abcdefghijklmnop!";
+let v = goosimd::load<goosimd::U8x16>(bytes[1..]);
+assert(v.eq('p').first() == 15); // The trailing ! is not loaded.
+```
+
 <a id="api-6"></a>
 
 ## `goosimd::eq`
 
-[source](goosimd.goose#L42-L42)
+[source](goosimd.goose#L74-L74)
 
 ```goose
 inline fn eq<L>(v: Vec<L>, x: u8) -> Mask<L>
@@ -94,11 +120,17 @@ inline fn eq<L>(v: Vec<L>, x: u8) -> Mask<L>
 
 Compare each byte lane to x, returning 0xff for equal lanes and 0 otherwise.
 
+```goose
+let v = goosimd::load<goosimd::U8x16>("abacdefghijklmno");
+assert(v.eq('a').to_bits() == 5); // Lanes 0 and 2.
+assert(v.eq('z').first() == -1);
+```
+
 <a id="api-7"></a>
 
 ## `goosimd::bit_and`
 
-[source](goosimd.goose#L44-L44)
+[source](goosimd.goose#L82-L82)
 
 ```goose
 inline fn bit_and<L>(a: Mask<L>, b: Mask<L>) -> Mask<L>
@@ -106,11 +138,17 @@ inline fn bit_and<L>(a: Mask<L>, b: Mask<L>) -> Mask<L>
 
 Keep lanes matched by both masks. The masks must have the same width.
 
+```goose
+let a = goosimd::load<goosimd::U8x16>("abacdefghijklmno").eq('a');
+let b = goosimd::load<goosimd::U8x16>("xxaxxxxxxxxxxxxx").eq('a');
+assert(a.bit_and(b).to_bits() == 4); // Only lane 2.
+```
+
 <a id="api-8"></a>
 
 ## `goosimd::bit_or`
 
-[source](goosimd.goose#L46-L46)
+[source](goosimd.goose#L89-L89)
 
 ```goose
 inline fn bit_or<L>(a: Mask<L>, b: Mask<L>) -> Mask<L>
@@ -118,11 +156,16 @@ inline fn bit_or<L>(a: Mask<L>, b: Mask<L>) -> Mask<L>
 
 Keep lanes matched by either mask. The masks must have the same width.
 
+```goose
+let v = goosimd::load<goosimd::U8x16>("abcdefghijklmnop");
+assert(v.eq('a').bit_or(v.eq('d')).to_bits() == 9);
+```
+
 <a id="api-9"></a>
 
 ## `goosimd::bit_not`
 
-[source](goosimd.goose#L48-L48)
+[source](goosimd.goose#L97-L97)
 
 ```goose
 inline fn bit_not<L>(m: Mask<L>) -> Mask<L>
@@ -130,11 +173,17 @@ inline fn bit_not<L>(m: Mask<L>) -> Mask<L>
 
 Invert every lane of a comparison mask, exchanging 0 and 0xff.
 
+```goose
+let mask = goosimd::load<goosimd::U8x16>("abcdefghijklmnop").eq('a');
+assert(mask.bit_not().first() == 1);
+assert(mask.bit_not().to_bits() == 65534); // Only the low 16 bits.
+```
+
 <a id="api-10"></a>
 
 ## `goosimd::to_bits`
 
-[source](goosimd.goose#L51-L51)
+[source](goosimd.goose#L105-L105)
 
 ```goose
 inline fn to_bits<L>(m: Mask<L>) -> u32
@@ -143,11 +192,16 @@ inline fn to_bits<L>(m: Mask<L>) -> u32
 Extract one bit per matched lane. Lane 0 is bit 0; bits above the mask
 width are zero. The input must contain only comparison-mask values.
 
+```goose
+let v = goosimd::load<goosimd::U8x32>("abcdefghijklmnopqrstuvwxyz012345");
+assert(v.eq('5').to_bits() == 0x80000000);
+```
+
 <a id="api-11"></a>
 
 ## `goosimd::first`
 
-[source](goosimd.goose#L53-L56)
+[source](goosimd.goose#L113-L116)
 
 ```goose
 inline fn first<L>(m: Mask<L>) -> i64
@@ -155,11 +209,17 @@ inline fn first<L>(m: Mask<L>) -> i64
 
 Return the lowest matching lane index, or -1 when no lanes match.
 
+```goose
+let v = goosimd::load<goosimd::U8x16>("abacdefghijklmno");
+assert(v.eq('a').first() == 0);
+assert(v.eq('z').first() == -1);
+```
+
 <a id="api-12"></a>
 
 ## `goosimd::last`
 
-[source](goosimd.goose#L58-L61)
+[source](goosimd.goose#L124-L127)
 
 ```goose
 inline fn last<L>(m: Mask<L>) -> i64
@@ -167,11 +227,17 @@ inline fn last<L>(m: Mask<L>) -> i64
 
 Return the highest matching lane index, or -1 when no lanes match.
 
+```goose
+let v = goosimd::load<goosimd::U8x16>("abacdefghijklmno");
+assert(v.eq('a').last() == 2);
+assert(v.eq('z').last() == -1);
+```
+
 <a id="api-13"></a>
 
 ## `goosimd::load_u16`
 
-[source](goosimd.goose#L69-L72)
+[source](goosimd.goose#L139-L142)
 
 ```goose
 inline fn load_u16(s: const u8[:]) -> u16
@@ -180,11 +246,15 @@ inline fn load_u16(s: const u8[:]) -> u16
 Read the first two bytes as a native-endian integer, without alignment
 requirements. Asserts s.len >= 2. Not a portable serialization primitive.
 
+```goose
+assert(goosimd::load_u16("aa!") == 0x6161); // Same value on either endianness.
+```
+
 <a id="api-14"></a>
 
 ## `goosimd::load_u32`
 
-[source](goosimd.goose#L75-L78)
+[source](goosimd.goose#L149-L152)
 
 ```goose
 inline fn load_u32(s: const u8[:]) -> u32
@@ -193,11 +263,15 @@ inline fn load_u32(s: const u8[:]) -> u32
 Read the first four bytes as a native-endian integer, without alignment
 requirements. Asserts s.len >= 4. Not a portable serialization primitive.
 
+```goose
+assert(goosimd::load_u32("aaaa!") == 0x61616161);
+```
+
 <a id="api-15"></a>
 
 ## `goosimd::load_u64`
 
-[source](goosimd.goose#L81-L84)
+[source](goosimd.goose#L159-L162)
 
 ```goose
 inline fn load_u64(s: const u8[:]) -> u64
@@ -206,11 +280,15 @@ inline fn load_u64(s: const u8[:]) -> u64
 Read the first eight bytes as a native-endian integer, without alignment
 requirements. Asserts s.len >= 8. Not a portable serialization primitive.
 
+```goose
+assert(goosimd::load_u64("aaaaaaaa!") == 0x6161616161616161);
+```
+
 <a id="api-16"></a>
 
 ## `goosimd::find_byte`
 
-[source](goosimd.goose#L89-L98)
+[source](goosimd.goose#L172-L181)
 
 ```goose
 simd fn find_byte(s: const u8[:], byte: u8) -> i64
@@ -220,11 +298,16 @@ Return the first byte offset matching byte, or -1 if none exists.
 Example whole-loop runtime dispatch with simd fn on Clang/x86; other
 backends use their available target or scalar implementation.
 
+```goose
+assert(goosimd::find_byte("goose", 's') == 3);
+assert(goosimd::find_byte("goose", 'x') == -1);
+```
+
 <a id="api-17"></a>
 
 ## `goosimd::find_pair`
 
-[source](goosimd.goose#L103-L116)
+[source](goosimd.goose#L191-L204)
 
 ```goose
 simd fn find_pair(s: const u8[:], a: u8, b: u8) -> i64
@@ -233,3 +316,8 @@ simd fn find_pair(s: const u8[:], a: u8, b: u8) -> i64
 Return the first byte offset of adjacent bytes a, b, or -1 if absent.
 Empty and one-byte inputs cannot match. Uses the same whole-loop SIMD
 dispatch as find_byte.
+
+```goose
+assert(goosimd::find_pair("goose", 'o', 's') == 2);
+assert(goosimd::find_pair("goose", 'g', 's') == -1);
+```
