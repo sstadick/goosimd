@@ -1,0 +1,18 @@
+# Supported API; raw adapters and width-specific implementation helpers omitted.
+goosimd::Vec
+goosimd::Mask
+goosimd::U8x16
+goosimd::U8x32
+goosimd::load
+goosimd::eq
+goosimd::bit_and
+goosimd::bit_or
+goosimd::bit_not
+goosimd::to_bits
+goosimd::first
+goosimd::last
+goosimd::load_u16
+goosimd::load_u32
+goosimd::load_u64
+goosimd::find_byte
+goosimd::find_pair

@@ -1,5 +1,7 @@
 # goosimd
 
+**[API reference](API.md)** — vector and mask signatures, contracts, and source links.
+
 **Placeholder only. This implementation is experimental and may be entirely
 replaced.** Types, layout, and backend choices are not a stable API or ABI.
 The generic byte-vector interface replaces the original `Bytes16`/`Bytes32`
@@ -14,8 +16,30 @@ object, or LTO is needed. Requires a Goose compiler with `c_headers`
 
 Current version: [v0.1.0](https://github.com/sstadick/goosimd/releases/tag/v0.1.0).
 Versions are Git tags (`vMAJOR.MINOR.PATCH`). Pushing a version tag runs CI
-and publishes a GitHub source release only after tests pass. CI also runs
-on branch pushes and pull requests. The examples below track `main`.
+and publishes a GitHub source release only after tests and the documentation
+check pass. Future releases also attach `API.md` with source links pinned to
+the release commit. CI runs on branch pushes and pull requests as well.
+The examples below track `main`.
+
+## API documentation
+
+[API.md](API.md) is generated from source comments with
+[goosdoc v0.1.0](https://github.com/sstadick/goosdoc/releases/tag/v0.1.0).
+Edit the comments, not the generated file. `api.txt` selects the supported
+API, omitting raw adapters and implementation helpers.
+
+With Goose on `PATH`, run from this checkout:
+
+```sh
+git clone --branch v0.1.0 --depth 1 https://github.com/sstadick/goosdoc.git ../goosdoc
+scripts/docs.sh
+scripts/docs.sh --check
+```
+
+Skip cloning if goosdoc is already beside this repository. For another
+location, set `GOOSDOC=/path/to/goosdoc/main.goose`. CI pins the generator's
+commit and rejects missing comments or a stale reference. Checked-in source
+links are relative; release artifacts use immutable GitHub permalinks.
 
 ## Use it in a Goose project
 
