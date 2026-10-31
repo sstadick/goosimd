@@ -10,12 +10,13 @@ comparison, and mask primitives. No consumer `--include`, separate SIMD
 object, or LTO is needed. Requires a Goose compiler with `c_headers`
 ([merged PR](https://github.com/aardappel/goose/pull/141)).
 
-## Byte vectors and masks
+## Use it in a Goose project
 
-For adjacent checkouts:
+Save this as `main.goose` in your project. Goose fetches the package from
+GitHub; no sibling checkout or consumer `--include` flag is needed.
 
 ```goose
-import goosimd from "../goosimd";
+import goosimd from "github.com/sstadick/goosimd@main";
 
 type Bytes = goosimd::Vec<u8[32]>;
 
@@ -28,6 +29,13 @@ fn main() {
     print(matches.to_bits());  // bits 0 and 25
 }
 ```
+
+Run it with `goose run main.goose`, or build an executable with
+`goose build main.goose -O2 -o demo`. These commands require a Goose version
+with `c_headers` support. `@main` follows the development branch; use a
+commit instead for a reproducible dependency.
+
+## Byte vectors and masks
 
 `U8x16` and `U8x32` are aliases for `Vec<u8[16]>` and `Vec<u8[32]>`.
 Width describes the value, not the instruction set: a 32-byte vector can
