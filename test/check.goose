@@ -14,6 +14,20 @@ fn check_search(s: const u8[:], a: u8, b: u8) {
     assert(goosimd::find_pair(s, a, b) == pair_at);
 }
 
+fn check_mask<L>(m: goosimd::Mask<L>, expected: u32, width: i64) {
+    var first = -1;
+    var last = -1;
+    for i in width {
+        if expected & ((1 as u32) << i) != 0 {
+            if first < 0 { first = i; }
+            last = i;
+        }
+    }
+    assert(m.to_bits() == expected);
+    assert(m.first() == first);
+    assert(m.last() == last);
+}
+
 fn main() {
     var data: u8[160] = [0; 160];
     // Every byte value, lane and alignment, including bit 31 of the mask.
@@ -22,58 +36,44 @@ fn main() {
             for lane in 32 {
                 for i in 32 { data[offset + i] = (value as u8) ^ 1; }
                 data[offset + lane] = value as u8;
-                let eq = goosimd::eq8(goosimd::load32(data[offset..]), value as u8);
-                assert(goosimd::mask8(eq) == (1 as u32) << lane);
-                var expected: u8[32] = [0; 32];
-                expected[lane] = 255;
-                let want = goosimd::load32(expected);
-                assert(eq.a == want.a && eq.b == want.b && eq.c == want.c && eq.d == want.d);
-                let eq16 = goosimd::eq8(goosimd::load16(data[offset..offset + 16]), value as u8);
+                let eq = goosimd::load<goosimd::U8x32>(data[offset..offset + 32]).eq(value as u8);
+                check_mask(eq, (1 as u32) << lane, 32);
+                let eq16 = goosimd::load<goosimd::U8x16>(data[offset..offset + 16]).eq(value as u8);
                 let mask16: u32 = if lane < 16 { (1 as u32) << lane } else { 0 };
-                assert(goosimd::mask8(eq16) == mask16);
-                assert(eq16.a == want.a && eq16.b == want.b);
+                check_mask(eq16, mask16, 16);
             }
         }
     }
-    // Arbitrary bytes, not just comparison results. Compute bitwise results
-    // byte by byte independently of the package's four-u64 implementation.
+    // Independent masks with mixed bits distinguish AND, OR, and NOT.
+    // Expected bits come from scalar input bytes, never SIMD results.
     var state: u64 = 123456789;
     var other: u8[32] = [0; 32];
-    var combined: u8[32] = [0; 32];
-    var union: u8[32] = [0; 32];
-    var inverted: u8[32] = [0; 32];
     for trial in 1000 {
-        var expected: u32 = 0;
+        var left: u32 = 0;
+        var right: u32 = 0;
         for i in 32 {
             state ^= state << 13;
             state ^= state >> 7;
             state ^= state << 17;
-            data[i] = (state >> 56) as u8;
-            other[i] = (state >> 24) as u8;
-            combined[i] = data[i] & other[i];
-            union[i] = data[i] | other[i];
-            inverted[i] = ~data[i];
-            if data[i] >= 128 { expected |= (1 as u32) << i; }
+            data[i] = ((state >> 56) & 1) as u8;
+            other[i] = ((state >> 24) & 1) as u8;
+            if data[i] == 1 { left |= (1 as u32) << i; }
+            if other[i] == 1 { right |= (1 as u32) << i; }
         }
-        assert(goosimd::mask8(goosimd::load32(data)) == expected);
-        let got = goosimd::bit_and(goosimd::load32(data), goosimd::load32(other));
-        let want = goosimd::load32(combined);
-        assert(got.a == want.a && got.b == want.b && got.c == want.c && got.d == want.d);
-        let either = goosimd::bit_or(goosimd::load32(data), goosimd::load32(other));
-        let want_or = goosimd::load32(union);
-        assert(either.a == want_or.a && either.b == want_or.b && either.c == want_or.c && either.d == want_or.d);
-        let flip = goosimd::bit_not(goosimd::load32(data));
-        let want_not = goosimd::load32(inverted);
-        assert(flip.a == want_not.a && flip.b == want_not.b && flip.c == want_not.c && flip.d == want_not.d);
-        let x16 = goosimd::load16(data);
-        let y16 = goosimd::load16(other);
-        assert(goosimd::mask8(x16) == (expected & 0xFFFF));
-        let and16 = goosimd::bit_and(x16, y16);
-        let or16 = goosimd::bit_or(x16, y16);
-        let not16 = goosimd::bit_not(x16);
-        assert(and16.a == want.a && and16.b == want.b);
-        assert(or16.a == want_or.a && or16.b == want_or.b);
-        assert(not16.a == want_not.a && not16.b == want_not.b);
+        let x = goosimd::load<goosimd::U8x32>(data).eq(1);
+        let y = goosimd::load<goosimd::U8x32>(other).eq(1);
+        check_mask(x.bit_and(y), left & right, 32);
+        check_mask(x.bit_or(y), left | right, 32);
+        check_mask(x.bit_not(), ~left, 32);
+        check_mask(x.bit_or(x.bit_not()), 0xFFFFFFFF, 32);
+        check_mask(x.bit_and(x.bit_not()), 0, 32);
+        let x16 = goosimd::load<goosimd::U8x16>(data).eq(1);
+        let y16 = goosimd::load<goosimd::U8x16>(other).eq(1);
+        check_mask(x16.bit_and(y16), (left & right) & 0xFFFF, 16);
+        check_mask(x16.bit_or(y16), (left | right) & 0xFFFF, 16);
+        check_mask(x16.bit_not(), (~left) & 0xFFFF, 16);
+        check_mask(x16.bit_or(x16.bit_not()), 0xFFFF, 16);
+        check_mask(x16.bit_and(x16.bit_not()), 0, 16);
     }
     // Native-endian loads: repeated bytes have the same expected integer on
     // either endian. Nonuniform inputs distinguish both endpoints and widths.
@@ -112,7 +112,7 @@ fn main() {
         }
     }
     for i in 160 { data[i] = 255; }
-    assert(goosimd::mask8(goosimd::load32(data)) == 4294967295);
+    check_mask(goosimd::load<goosimd::U8x32>(data).eq(255), 0xFFFFFFFF, 32);
     check_search(data, 255, 255);
     check_search(data, 0, 0);
     print("goosimd checks passed");
