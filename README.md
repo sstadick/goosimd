@@ -10,6 +10,13 @@ comparison, and mask primitives. No consumer `--include`, separate SIMD
 object, or LTO is needed. Requires a Goose compiler with `c_headers`
 ([merged PR](https://github.com/aardappel/goose/pull/141)).
 
+## Releases
+
+Current version: [v0.1.0](https://github.com/sstadick/goosimd/releases/tag/v0.1.0).
+Versions are Git tags (`vMAJOR.MINOR.PATCH`). Pushing a version tag runs CI
+and publishes a GitHub source release only after tests pass. CI also runs
+on branch pushes and pull requests. The examples below track `main`.
+
 ## Use it in a Goose project
 
 Save this as `main.goose` in your project. Goose fetches the package from

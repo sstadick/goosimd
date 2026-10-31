@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check out Goose
+        uses: actions/checkout@v4
+        with:
+          repository: aardappel/goose
+          # Includes package c_headers support; v2026.3 predates it.
+          ref: b46099024b9af8a9f54cd76e24953a89c21ccb3a
+          path: .ci/goose
+          persist-credentials: false
+      - name: Build Goose
+        run: |
+          cmake -S .ci/goose -B .ci/goose/build -DCMAKE_BUILD_TYPE=Debug -DGOOSE_BUILTIN_LIBS=
+          cmake --build .ci/goose/build --parallel 2
+          echo "$GITHUB_WORKSPACE/.ci/goose/build" >> "$GITHUB_PATH"
+      - name: TinyCC, GCC, and Clang tests
+        run: |
+          avx2=()
+          if grep -qw avx2 /proc/cpuinfo; then
+            avx2=(--avx2)
+          else
+            echo "AVX2 tests skipped: runner CPU does not support AVX2"
+          fi
+          for cc in gcc clang; do
+            python3 test/run.py --cc "$cc" "${avx2[@]}"
+          done
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish source release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Expected vMAJOR.MINOR.PATCH"; exit 1; }
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --generate-notes
+          fi
