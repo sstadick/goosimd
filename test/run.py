@@ -11,7 +11,7 @@ import tempfile
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--goose", default="goose", help="patched Goose compiler")
+    parser.add_argument("--goose", default="goose", help="Goose compiler with package c_headers support")
     parser.add_argument("--cc", default="cc", help="GCC/Clang-style C driver")
     parser.add_argument("--avx2", action="store_true", help="also run AVX2; requires an AVX2 CPU")
     args = parser.parse_args()

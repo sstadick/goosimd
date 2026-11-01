@@ -288,26 +288,27 @@ assert(goosimd::load_u64("aaaaaaaa!") == 0x6161616161616161);
 
 ## `goosimd::find_byte`
 
-[source](goosimd.goose#L172-L181)
+[source](goosimd.goose#L173-L182)
 
 ```goose
 simd fn find_byte(s: const u8[:], byte: u8) -> i64
 ```
 
 Return the first byte offset matching byte, or -1 if none exists.
-Example whole-loop runtime dispatch with simd fn on Clang/x86; other
-backends use their available target or scalar implementation.
+Accepts inputs of any length, including empty slices. Clang/x86 builds
+select SIMD at runtime; other backends use their build target or scalar code.
 
 ```goose
 assert(goosimd::find_byte("goose", 's') == 3);
 assert(goosimd::find_byte("goose", 'x') == -1);
+assert(goosimd::find_byte("", 'g') == -1);
 ```
 
 <a id="api-17"></a>
 
 ## `goosimd::find_pair`
 
-[source](goosimd.goose#L191-L204)
+[source](goosimd.goose#L192-L205)
 
 ```goose
 simd fn find_pair(s: const u8[:], a: u8, b: u8) -> i64

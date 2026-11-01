@@ -32,7 +32,7 @@ type U8x16 = Vec<u8[16]>;
 // ```
 type U8x32 = Vec<u8[32]>;
 
-// Concrete externs are the only width-specific part of the public façade.
+// Header adapters for each supported vector width.
 extern fn load16_raw(s: const u8[:]) -> U8x16 = "goosimd_load16";
 extern fn load32_raw(s: const u8[:]) -> U8x32 = "goosimd_load32";
 extern fn eq_impl(v: U8x16, x: u8) -> Mask<u8[16]> = "goosimd_eq16";
@@ -162,12 +162,13 @@ inline fn load_u64(s: const u8[:]) -> u64 {
 }
 
 // Return the first byte offset matching byte, or -1 if none exists.
-// Example whole-loop runtime dispatch with simd fn on Clang/x86; other
-// backends use their available target or scalar implementation.
+// Accepts inputs of any length, including empty slices. Clang/x86 builds
+// select SIMD at runtime; other backends use their build target or scalar code.
 //
 // ```goose
 // assert(goosimd::find_byte("goose", 's') == 3);
 // assert(goosimd::find_byte("goose", 'x') == -1);
+// assert(goosimd::find_byte("", 'g') == -1);
 // ```
 simd fn find_byte(s: const u8[:], byte: u8) -> i64 {
     var pos = 0;

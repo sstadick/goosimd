@@ -99,10 +99,45 @@ a `simd fn`. The included `find_byte` and `find_pair` use this approach.
 Build with `goose build main.goose --cc clang -O2 -o demo` to use it.
 GCC does not provide runtime selection for Goose's `simd fn`.
 
+This complete example finds either separator, including in a short input or
+the tail after the last full vector:
+
+```goose
+import goosimd from "github.com/sstadick/goosimd@main";
+
+simd fn find_separator(bytes: const u8[:]) -> i64 {
+    var pos = 0;
+    while pos <= bytes.len - 32 {
+        let v = goosimd::load<goosimd::U8x32>(bytes[pos..]);
+        let at = v.eq(',').bit_or(v.eq(';')).first();
+        if at >= 0 { return pos + at; }
+        pos += 32;
+    }
+    for i in pos..bytes.len {
+        if bytes[i] == ',' || bytes[i] == ';' { return i; }
+    }
+    return -1;
+}
+
+fn main() {
+    assert(find_separator("red,green") == 3);
+    assert(find_separator("abcdefghijklmnopqrstuvwxyz012345;") == 32);
+    assert(find_separator("no separators") == -1);
+}
+```
+
 To require AVX2 at compile time, compile emitted C with `-mavx2`; the resulting
-executable requires an AVX2 CPU. Clang's runtime AVX2 selection also checks
-FMA, BMI1/2, LZCNT, POPCNT, and OS support. Tested on Linux x86-64;
-ARM and Windows are unverified.
+executable requires an AVX2 CPU. For example, on Linux x86-64:
+
+```sh
+goose --standalone -O2 -o demo.c main.goose
+clang -O2 -DGS_SIMD=0 -mavx2 demo.c -o demo -lm -pthread -ldl
+./demo
+```
+
+`-DGS_SIMD=0` disables runtime selection in this fixed-target build.
+Clang's runtime AVX2 selection also checks FMA, BMI1/2, LZCNT, POPCNT, and
+OS support. Tested on Linux x86-64; ARM and Windows are unverified.
 
 ## Contributing
 
